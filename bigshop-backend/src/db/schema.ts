@@ -14,14 +14,13 @@ export const users = pgTable('users',
   dateOfBirth: timestamp('date_of_birth'),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
-}, 
-(table) => {
-  return[
-  index('email_idx').on(table.email),
-];
-}
+  }, 
+  (table) => {
+    return[
+      index('email_idx').on(table.email),
+    ];
+  }
 );
-
 
 // Категории товаров
 export const categories = pgTable('categories', {
@@ -69,9 +68,6 @@ export const products = pgTable('products', {
   featuredIdx: index('product_featured_idx').on(table.isFeatured),
 }));
 
-// TODO(human) - Необходимо создать enum для статусов заказов 
-// Статусы: 'pending', 'processing', 'shipped', 'delivered', 'cancelled', 'refunded'
-// Используйте pgEnum из drizzle-orm/pg-core
 
 export const orderStatusEnum = pgEnum('order_status_enum', ['pending', 'processing', 'shipped', 'delivered', 'cancelled', 'refunded'])
 
@@ -81,7 +77,6 @@ export const orders = pgTable('orders', {
   userId: uuid('user_id').references(() => users.id).notNull(),
   orderNumber: varchar('order_number', { length: 50 }).notNull().unique(),
   status: orderStatusEnum('status').default('pending').notNull(),
-  // TODO(human) - Добавьте поле status используя созданный enum
   subtotal: decimal('subtotal', { precision: 10, scale: 2 }).notNull(),
   taxAmount: decimal('tax_amount', { precision: 10, scale: 2 }).default('0').notNull(),
   shippingAmount: decimal('shipping_amount', { precision: 10, scale: 2 }).default('0').notNull(),
@@ -95,7 +90,6 @@ export const orders = pgTable('orders', {
   userIdx: index('order_user_idx').on(table.userId),
   orderNumberIdx: index('order_number_idx').on(table.orderNumber),
   statusIdx: index('order_status_idx').on(table.status),
-  // TODO(human) - Добавьте индекс для поля status
 }));
 
 // Товары в заказе
