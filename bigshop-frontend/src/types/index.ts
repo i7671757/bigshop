@@ -71,12 +71,23 @@ export interface User {
 
 export interface CartItem {
   id: string;
-  userId: string;
-  productId: string;
   quantity: number;
   createdAt: string;
-  updatedAt: string;
-  product: Product;
+  product: {
+    id: string;
+    name: string;
+    price: string;
+    comparePrice?: string;
+    images: string[];
+    inventory: number;
+    isActive: boolean;
+  };
+}
+
+export interface CartResponse {
+  items: CartItem[];
+  totalItems: number;
+  totalAmount: string;
 }
 
 export interface Order {

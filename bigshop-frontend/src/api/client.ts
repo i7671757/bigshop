@@ -124,6 +124,74 @@ class ApiClient {
   }
 
   // ==========================================================================
+  // МЕТОДЫ ДЛЯ РАБОТЫ С КОРЗИНОЙ
+  // ==========================================================================
+
+  /**
+   * Получение содержимого корзины пользователя.
+   * 
+   * @param userId - ID пользователя из Clerk
+   * @returns Promise с содержимым корзины
+   */
+  async getCart(userId: string) {
+    return this.request(`/cart/${userId}`);
+  }
+
+  /**
+   * Добавление товара в корзину.
+   * 
+   * @param userId - ID пользователя из Clerk  
+   * @param data - объект с productId и quantity
+   * @returns Promise с результатом добавления
+   */
+  async addToCart(userId: string, data: { productId: string; quantity: number }) {
+    return this.request(`/cart/${userId}`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  /**
+   * Обновление количества товара в корзине.
+   * 
+   * @param userId - ID пользователя из Clerk
+   * @param itemId - ID записи в корзине
+   * @param data - объект с новым quantity
+   * @returns Promise с результатом обновления
+   */
+  async updateCartItem(userId: string, itemId: string, data: { quantity: number }) {
+    return this.request(`/cart/${userId}/items/${itemId}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+  }
+
+  /**
+   * Удаление товара из корзины.
+   * 
+   * @param userId - ID пользователя из Clerk
+   * @param itemId - ID записи в корзине
+   * @returns Promise с подтверждением удаления
+   */
+  async removeFromCart(userId: string, itemId: string) {
+    return this.request(`/cart/${userId}/items/${itemId}`, {
+      method: 'DELETE',
+    });
+  }
+
+  /**
+   * Очистка всей корзины пользователя.
+   * 
+   * @param userId - ID пользователя из Clerk
+   * @returns Promise с подтверждением очистки
+   */
+  async clearCart(userId: string) {
+    return this.request(`/cart/${userId}`, {
+      method: 'DELETE',
+    });
+  }
+
+  // ==========================================================================
   // СЛУЖЕБНЫЕ МЕТОДЫ
   // ==========================================================================
 
@@ -134,7 +202,19 @@ class ApiClient {
    * @returns Promise с информацией о статусе API
    */
   async healthCheck() {
-    return this.request('/health');
+    // Health endpoint находится на корневом уровне API, не в /api/v1 группе
+    const healthURL = this.baseURL.replace('/api/v1', '') + '/health';
+    
+    try {
+      const response = await fetch(healthURL);
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+      return await response.json() as { status: string; timestamp: string; database: string };
+    } catch (error) {
+      console.error('Health check failed:', error);
+      throw error;
+    }
   }
 }
 

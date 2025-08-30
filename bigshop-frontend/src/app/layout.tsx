@@ -3,6 +3,7 @@ import { Geist, Geist_Mono } from "next/font/google";
 import { ClerkProvider } from '@clerk/nextjs';
 import QueryProvider from '@/providers/QueryProvider';
 import Header from '@/components/Header';
+import { ChatInterface } from '@/components/AIAssistant/ChatInterface';
 import "./globals.css";
 
 const geistSans = Geist({
@@ -36,6 +37,8 @@ export default function RootLayout({
             <main className="container mx-auto px-4 py-8">
               {children}
             </main>
+            {/* ИИ-Ассистент доступен на всех страницах */}
+            <ChatInterface />
           </QueryProvider>
         </body>
       </html>

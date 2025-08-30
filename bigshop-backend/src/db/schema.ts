@@ -74,7 +74,7 @@ export const orderStatusEnum = pgEnum('order_status_enum', ['pending', 'processi
 // Заказы
 export const orders = pgTable('orders', {
   id: uuid('id').primaryKey().defaultRandom(),
-  userId: uuid('user_id').references(() => users.id).notNull(),
+  userId: text('user_id').notNull(), // Clerk ID - строка, не UUID
   orderNumber: varchar('order_number', { length: 50 }).notNull().unique(),
   status: orderStatusEnum('status').default('pending').notNull(),
   subtotal: decimal('subtotal', { precision: 10, scale: 2 }).notNull(),
@@ -132,7 +132,7 @@ export const addresses = pgTable('addresses', {
 // Корзина
 export const cartItems = pgTable('cart_items', {
   id: uuid('id').primaryKey().defaultRandom(),
-  userId: uuid('user_id').references(() => users.id, { onDelete: 'cascade' }).notNull(),
+  userId: text('user_id').notNull(), // Clerk ID - строка, не UUID
   productId: uuid('product_id').references(() => products.id, { onDelete: 'cascade' }).notNull(),
   quantity: integer('quantity').notNull(),
   createdAt: timestamp('created_at').defaultNow().notNull(),

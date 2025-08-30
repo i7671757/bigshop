@@ -3,6 +3,7 @@
 import { useProducts } from '@/hooks/useProducts';
 import { Product } from '@/types';
 import Image from 'next/image';
+import { AddToCartButton } from './Cart/AddToCartButton';
 
 interface ProductCardProps {
   product: Product;
@@ -57,15 +58,10 @@ function ProductCard({ product }: ProductCardProps) {
             )}
           </div>
           
-          <button
-            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm font-medium"
-            onClick={() => {
-              // TODO: Add to cart functionality
-              console.log('Add to cart:', product.id);
-            }}
-          >
-            В корзину
-          </button>
+          <AddToCartButton 
+            productId={product.id}
+            disabled={product.inventory === 0}
+          />
         </div>
         
         {product.inventory <= 5 && product.inventory > 0 && (

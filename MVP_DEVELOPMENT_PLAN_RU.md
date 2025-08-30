@@ -1,8 +1,8 @@
-# 🛒 План разработки MVP интернет-магазина продуктов питания (10 дней)
+# 🛒 План разработки MVP интернет-магазина продуктов питания с ИИ-ассистентом (11 дней)
 
 ## 📋 Обзор проекта
 
-**Цель:** Создать готовый к продакшену MVP интернет-магазин для продажи продуктов питания за 10 дней (8-10 часов/день)
+**Цель:** Создать готовый к продакшену MVP интернет-магазин для продажи продуктов питания с умным ИИ-ассистентом за 11 дней (8-10 часов/день)
 
 ### 🛠 Технологический стек
 
@@ -19,6 +19,8 @@
 - Drizzle ORM (типобезопасные запросы)
 - Zod (валидация схем)
 - Bun.js (рантайм)
+- OpenAI GPT-4 (ИИ-ассистент)
+- AI SDK (Vercel) для стриминга ИИ ответов
 
 **База данных и сервисы:**
 - PostgreSQL через Supabase
@@ -399,7 +401,408 @@
 
 ---
 
-### 💳 День 5: Интеграция Stripe и процесс оплаты
+### 🤖 День 5: ИИ-ассистент для покупок
+**Время: 8-10 часов**
+
+#### Утро (4 часа)
+- [ ] **Настройка OpenAI API и базовой архитектуры (2ч)**
+  ```bash
+  # Backend
+  bun add openai @ai-sdk/openai ai zod
+  bun add @types/ws ws
+  
+  # Frontend  
+  bun add @ai-sdk/react ai use-sound framer-motion
+  ```
+
+- [ ] **API endpoints для ИИ-ассистента (2ч)**
+  ```typescript
+  // controllers/ai-assistant.ts
+  import { OpenAI } from 'openai';
+  import { z } from 'zod';
+  
+  const openai = new OpenAI({
+    apiKey: process.env.OPENAI_API_KEY,
+  });
+  
+  const tools = [
+    {
+      type: "function",
+      function: {
+        name: "search_products",
+        description: "Поиск продуктов по категории или названию",
+        parameters: {
+          type: "object",
+          properties: {
+            query: { type: "string", description: "Поисковый запрос" },
+            category: { type: "string", description: "Категория продуктов" },
+            maxPrice: { type: "number", description: "Максимальная цена" }
+          }
+        }
+      }
+    },
+    {
+      type: "function", 
+      function: {
+        name: "add_to_cart",
+        description: "Добавить товар в корзину пользователя",
+        parameters: {
+          type: "object",
+          properties: {
+            productId: { type: "number" },
+            quantity: { type: "number", minimum: 1 }
+          },
+          required: ["productId", "quantity"]
+        }
+      }
+    },
+    {
+      type: "function",
+      function: {
+        name: "get_cart_info", 
+        description: "Получить информацию о корзине пользователя",
+        parameters: { type: "object", properties: {} }
+      }
+    }
+  ];
+  
+  export const chatWithAssistant = async ({ body, userId }: any) => {
+    const { message, conversationId } = body;
+    
+    const completion = await openai.chat.completions.create({
+      model: "gpt-4-turbo-preview",
+      messages: [
+        {
+          role: "system", 
+          content: `Ты - ИИ-ассистент интернет-магазина продуктов питания BigShop. 
+          Помогай пользователям найти нужные продукты, отвечай на вопросы о составе, 
+          рекомендуй товары и помогай с оформлением заказа. Будь дружелюбным и полезным.
+          Всегда отвечай на русском языке.`
+        },
+        { role: "user", content: message }
+      ],
+      tools,
+      tool_choice: "auto"
+    });
+    
+    return await processAssistantResponse(completion, userId);
+  };
+  ```
+
+#### Вечер (4-6 часов)
+- [ ] **Function calling для взаимодействия с каталогом (2ч)**
+  ```typescript
+  // services/ai-functions.ts
+  export const aiAssistantFunctions = {
+    search_products: async (args: any) => {
+      const { query, category, maxPrice } = args;
+      return await db
+        .select()
+        .from(products)
+        .where(
+          and(
+            query ? ilike(products.name, `%${query}%`) : undefined,
+            category ? eq(products.category, category) : undefined,
+            maxPrice ? lte(products.price, maxPrice) : undefined,
+            eq(products.isActive, true)
+          )
+        )
+        .limit(10);
+    },
+    
+    add_to_cart: async (args: any, userId: string) => {
+      const { productId, quantity } = args;
+      
+      // Проверим наличие товара
+      const product = await db
+        .select()
+        .from(products) 
+        .where(eq(products.id, productId))
+        .get();
+        
+      if (!product || product.stock < quantity) {
+        throw new Error('Недостаточно товара на складе');
+      }
+      
+      return await addToCart({ productId, quantity, userId });
+    },
+    
+    get_cart_info: async (userId: string) => {
+      return await db
+        .select({
+          id: cartItems.id,
+          quantity: cartItems.quantity,
+          product: products
+        })
+        .from(cartItems)
+        .leftJoin(products, eq(cartItems.productId, products.id))
+        .where(eq(cartItems.userId, userId));
+    }
+  };
+  ```
+
+- [ ] **Real-time чат интерфейс (3ч)**
+  ```typescript
+  // components/AIAssistant/ChatInterface.tsx
+  'use client';
+  
+  import { useChat } from 'ai/react';
+  import { motion, AnimatePresence } from 'framer-motion';
+  import { useState } from 'react';
+  
+  export function ChatInterface() {
+    const [isOpen, setIsOpen] = useState(false);
+    const { messages, input, handleInputChange, handleSubmit, isLoading } = useChat({
+      api: '/api/ai-chat'
+    });
+  
+    return (
+      <>
+        {/* Floating Chat Button */}
+        <motion.button
+          className="fixed bottom-6 right-6 w-16 h-16 bg-gradient-to-r from-blue-500 to-purple-600 rounded-full shadow-lg flex items-center justify-center z-50"
+          whileHover={{ scale: 1.1 }}
+          whileTap={{ scale: 0.9 }}
+          onClick={() => setIsOpen(!isOpen)}
+        >
+          <span className="text-white text-2xl">🤖</span>
+        </motion.button>
+  
+        {/* Chat Window */}
+        <AnimatePresence>
+          {isOpen && (
+            <motion.div
+              initial={{ opacity: 0, y: 100, scale: 0.8 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: 100, scale: 0.8 }}
+              className="fixed bottom-24 right-6 w-96 h-[500px] bg-white rounded-2xl shadow-2xl z-40 flex flex-col"
+            >
+              {/* Header */}
+              <div className="p-4 border-b bg-gradient-to-r from-blue-500 to-purple-600 text-white rounded-t-2xl">
+                <div className="flex items-center justify-between">
+                  <h3 className="font-semibold">ИИ-Ассистент BigShop</h3>
+                  <button onClick={() => setIsOpen(false)}>✕</button>
+                </div>
+                <p className="text-sm opacity-90">Помогу найти продукты и ответить на вопросы</p>
+              </div>
+  
+              {/* Messages */}
+              <div className="flex-1 overflow-y-auto p-4 space-y-4">
+                {messages.length === 0 && (
+                  <div className="text-center text-gray-500 mt-8">
+                    <div className="text-4xl mb-2">👋</div>
+                    <p>Привет! Чем могу помочь?</p>
+                    <div className="flex flex-wrap gap-2 mt-4">
+                      {['Найти молочные продукты', 'Что есть для завтрака?', 'Показать корзину'].map((suggestion) => (
+                        <button
+                          key={suggestion}
+                          className="px-3 py-1 bg-gray-100 rounded-full text-sm hover:bg-gray-200"
+                          onClick={() => handleInputChange({ target: { value: suggestion } } as any)}
+                        >
+                          {suggestion}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                
+                {messages.map((message) => (
+                  <motion.div
+                    key={message.id}
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}
+                  >
+                    <div className={`max-w-[80%] p-3 rounded-2xl ${
+                      message.role === 'user' 
+                        ? 'bg-blue-500 text-white' 
+                        : 'bg-gray-100 text-gray-800'
+                    }`}>
+                      <ReactMarkdown>{message.content}</ReactMarkdown>
+                    </div>
+                  </motion.div>
+                ))}
+                
+                {isLoading && (
+                  <div className="flex justify-start">
+                    <div className="bg-gray-100 p-3 rounded-2xl">
+                      <div className="flex space-x-2">
+                        <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce"></div>
+                        <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0.1s' }}></div>
+                        <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0.2s' }}></div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+  
+              {/* Input */}
+              <form onSubmit={handleSubmit} className="p-4 border-t">
+                <div className="flex space-x-2">
+                  <input
+                    value={input}
+                    onChange={handleInputChange}
+                    placeholder="Спросите что-нибудь..."
+                    className="flex-1 p-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    disabled={isLoading}
+                  />
+                  <motion.button
+                    type="submit"
+                    whileHover={{ scale: 1.05 }}
+                    whileTap={{ scale: 0.95 }}
+                    disabled={isLoading || !input}
+                    className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 disabled:opacity-50"
+                  >
+                    📤
+                  </motion.button>
+                </div>
+              </form>
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </>
+    );
+  }
+  ```
+
+- [ ] **Голосовой ввод (экспериментальная функция) (1ч)**
+  ```typescript
+  // components/AIAssistant/VoiceInput.tsx
+  export function VoiceInput({ onTranscript }: { onTranscript: (text: string) => void }) {
+    const [isRecording, setIsRecording] = useState(false);
+    
+    const startRecording = async () => {
+      if (!('webkitSpeechRecognition' in window)) {
+        alert('Голосовой ввод не поддерживается в вашем браузере');
+        return;
+      }
+      
+      const recognition = new (window as any).webkitSpeechRecognition();
+      recognition.lang = 'ru-RU';
+      recognition.onresult = (event: any) => {
+        const transcript = event.results[0][0].transcript;
+        onTranscript(transcript);
+        setIsRecording(false);
+      };
+      
+      setIsRecording(true);
+      recognition.start();
+    };
+    
+    return (
+      <motion.button
+        whileHover={{ scale: 1.05 }}
+        whileTap={{ scale: 0.95 }}
+        onClick={startRecording}
+        className={`p-2 rounded-lg ${isRecording ? 'bg-red-500 animate-pulse' : 'bg-gray-200'}`}
+      >
+        🎤
+      </motion.button>
+    );
+  }
+  ```
+
+**Milestone Day 5:** ✅ ИИ-ассистент интегрирован, может искать продукты и добавлять в корзину
+
+#### 🔄 Расширенные возможности ИИ-ассистента (опционально):
+
+- [ ] **Рекомендательная система**
+  ```typescript
+  // services/recommendations.ts
+  export const getPersonalizedRecommendations = async (userId: string, context: string) => {
+    const userHistory = await getUserPurchaseHistory(userId);
+    const currentCart = await getCartContents(userId);
+    
+    const prompt = `
+    На основе истории покупок: ${JSON.stringify(userHistory)}
+    Текущая корзина: ${JSON.stringify(currentCart)}
+    Контекст: ${context}
+    
+    Порекомендуй 3-5 продуктов, которые могут заинтересовать пользователя.
+    `;
+    
+    return await openai.chat.completions.create({
+      model: "gpt-4-turbo-preview",
+      messages: [{ role: "user", content: prompt }],
+      functions: [{ name: "get_product_recommendations", parameters: { type: "object" } }]
+    });
+  };
+  ```
+
+- [ ] **Анализ изображений продуктов (GPT-4 Vision)**
+  ```typescript
+  // services/image-analysis.ts
+  export const analyzeProductImage = async (imageUrl: string) => {
+    return await openai.chat.completions.create({
+      model: "gpt-4-vision-preview",
+      messages: [{
+        role: "user",
+        content: [
+          { type: "text", text: "Опиши этот продукт, его состав и пользу для здоровья" },
+          { type: "image_url", image_url: { url: imageUrl } }
+        ]
+      }]
+    });
+  };
+  ```
+
+- [ ] **Помощник по составлению меню**
+  ```typescript
+  // Функция для создания недельного меню
+  const createWeeklyMenu = async (preferences: UserPreferences) => {
+    const tools = [{
+      type: "function",
+      function: {
+        name: "create_meal_plan",
+        description: "Создать план питания на неделю",
+        parameters: {
+          type: "object",
+          properties: {
+            meals: { type: "array", items: { type: "object" } },
+            shopping_list: { type: "array", items: { type: "string" } }
+          }
+        }
+      }
+    }];
+    
+    return await openai.chat.completions.create({
+      model: "gpt-4-turbo-preview",
+      messages: [{
+        role: "user",
+        content: `Составь недельное меню для семьи из ${preferences.familySize} человек. 
+        Бюджет: ${preferences.budget}₽. Предпочтения: ${preferences.dietaryRestrictions}`
+      }],
+      tools
+    });
+  };
+  ```
+
+- [ ] **Умные уведомления и напоминания**
+  ```typescript
+  // services/smart-notifications.ts
+  export const generateSmartNotifications = async (userId: string) => {
+    const userPatterns = await analyzeUserBehavior(userId);
+    
+    // Умные напоминания о заканчивающихся продуктах
+    // Предложения скидок на часто покупаемые товары
+    // Рекомендации сезонных продуктов
+    
+    return await openai.chat.completions.create({
+      model: "gpt-4-turbo-preview",
+      messages: [{
+        role: "system",
+        content: "Ты - умная система уведомлений для интернет-магазина. Генерируй персонализированные уведомления."
+      }, {
+        role: "user", 
+        content: `Создай уведомления для пользователя на основе его паттернов: ${JSON.stringify(userPatterns)}`
+      }]
+    });
+  };
+  ```
+
+---
+
+### 💳 День 6: Интеграция Stripe и процесс оплаты
 **Время: 8-10 часов**
 
 #### Утро (4 часа)
@@ -520,7 +923,7 @@
 
 ---
 
-### 👤 День 6: Профиль пользователя и управление заказами
+### 👤 День 7: Профиль пользователя и управление заказами
 **Время: 8-10 часов**
 
 #### Утро (4 часа)
@@ -602,11 +1005,11 @@
 - [ ] **Статусы заказов и их отображение (1ч)**
 - [ ] **Возможность повторного заказа (1ч)**
 
-**Milestone Day 6:** ✅ Профиль пользователя готов, история заказов, детали заказов
+**Milestone Day 7:** ✅ Профиль пользователя готов, история заказов, детали заказов
 
 ---
 
-### ⚙️ День 7: Админ-панель (базовая)
+### ⚙️ День 8: Админ-панель (базовая)
 **Время: 8-10 часов**
 
 #### Утро (4 часа)
@@ -694,11 +1097,11 @@
   - Изменение статусов
   - Просмотр деталей
 
-**Milestone Day 7:** ✅ Базовая админ-панель готова, управление продуктами и заказами
+**Milestone Day 8:** ✅ Базовая админ-панель готова, управление продуктами и заказами
 
 ---
 
-### 🧪 День 8: Тестирование и оптимизация
+### 🧪 День 9: Тестирование и оптимизация
 **Время: 8-10 часов**
 
 #### Утро (4 часа)
@@ -784,11 +1187,11 @@
   - Валидация всех входящих данных
   - Проверка аутентификации на всех защищенных эндпоинтах
 
-**Milestone Day 8:** ✅ Тесты написаны, производительность оптимизирована, безопасность проверена
+**Milestone Day 9:** ✅ Тесты написаны, производительность оптимизирована, безопасность проверена
 
 ---
 
-### 📈 День 9: SEO, аналитика и финальные доработки
+### 📈 День 10: SEO, аналитика и финальные доработки
 **Время: 8-10 часов**
 
 #### Утро (4 часа)
@@ -920,11 +1323,11 @@
   - Оптимизация запросов к БД
   - Улучшение UX
 
-**Milestone Day 9:** ✅ SEO готово, аналитика настроена, PWA работает
+**Milestone Day 10:** ✅ SEO готово, аналитика настроена, PWA работает
 
 ---
 
-### 🚀 День 10: Развертывание в продакшн
+### 🚀 День 11: Развертывание в продакшн
 **Время: 8-10 часов**
 
 #### Утро (4 часа)
@@ -1019,7 +1422,7 @@
 
 - [ ] **Документация и README (1ч)**
 
-**Milestone Day 10:** ✅ MVP развернут в продакшене, мониторинг настроен, документация готова
+**Milestone Day 11:** ✅ MVP развернут в продакшене, мониторинг настроен, документация готова
 
 ---
 
@@ -1056,6 +1459,9 @@
 - [ ] ✅ Регистрация/вход через email и социальные сети
 - [ ] ✅ Просмотр каталога продуктов с фильтрами
 - [ ] ✅ Добавление в корзину
+- [ ] ✅ ИИ-ассистент для поиска и рекомендаций продуктов
+- [ ] ✅ Голосовой ввод для ИИ-ассистента (опционально)
+- [ ] ✅ Умные рекомендации на основе истории покупок
 - [ ] ✅ Оформление заказа с оплатой через Stripe
 - [ ] ✅ Просмотр истории заказов
 - [ ] ✅ Мобильная адаптивность
@@ -1083,14 +1489,15 @@
 
 ## 📊 Ожидаемые результаты
 
-По завершении 10 дней у вас будет:
+По завершении 11 дней у вас будет:
 
-1. **Полностью функциональный MVP** интернет-магазина
-2. **Производительное** приложение с оптимизированной загрузкой
-3. **Безопасная** система с правильной аутентификацией
-4. **SEO-оптимизированный** сайт для поисковых систем
-5. **Мобильно-адаптивный** интерфейс
-6. **Готовность к масштабированию** архитектура
+1. **Полностью функциональный MVP** интернет-магазина с ИИ-ассистентом
+2. **Умный ИИ-помощник** для поиска продуктов и персонализированных рекомендаций  
+3. **Производительное** приложение с оптимизированной загрузкой
+4. **Безопасная** система с правильной аутентификацией
+5. **SEO-оптимизированный** сайт для поисковых систем
+6. **Мобильно-адаптивный** интерфейс
+7. **Готовность к масштабированию** архитектура
 
 ### Примерные метрики готового MVP:
 - **Время загрузки главной страницы:** < 2 сек
